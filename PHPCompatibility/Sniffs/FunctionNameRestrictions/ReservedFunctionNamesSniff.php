@@ -10,6 +10,7 @@
 namespace PHPCompatibility\Sniffs\FunctionNameRestrictions;
 
 use PHPCompatibility\PHPCSHelper;
+use PHP_CodeSniffer_Tokens as Tokens;
 
 /**
  * \PHPCompatibility\Sniffs\FunctionNameRestrictions\ReservedFunctionNamesSniff.
@@ -66,6 +67,19 @@ class ReservedFunctionNamesSniff extends \Generic_Sniffs_NamingConventions_Camel
     {
         $tokens = $phpcsFile->getTokens();
 
+        /*
+         * Determine if this is a function which needs to be examined.
+         * The `processTokenWithinScope()` is called for each valid scope a method is in,
+         * so for nested classes, we need to make sure we only examine the token for
+         * the lowest level valid scope.
+         */
+        $conditions = $tokens[$stackPtr]['conditions'];
+        end($conditions);
+        $deepestScope = key($conditions);
+        if ($deepestScope !== $currScope) {
+            return;
+        }
+
         $methodName = $phpcsFile->getDeclarationName($stackPtr);
         if ($methodName === null) {
             // Ignore closures.
@@ -78,9 +92,10 @@ class ReservedFunctionNamesSniff extends \Generic_Sniffs_NamingConventions_Camel
             if (isset($this->magicMethods[$magicPart]) === false
                 && isset($this->methodsDoubleUnderscore[$magicPart]) === false
             ) {
-                $className = '[anonymous class]';
-                if (defined('T_ANON_CLASS') === false || $tokens[$currScope]['type'] !== 'T_ANON_CLASS') {
-                    $className = $phpcsFile->getDeclarationName($currScope);
+                $className         = '[anonymous class]';
+                $scopeNextNonEmpty = $phpcsFile->findNext(Tokens::$emptyTokens, ($currScope + 1), null, true);
+                if ($scopeNextNonEmpty !== false && $tokens[$scopeNextNonEmpty]['code'] === T_STRING) {
+                    $className = $tokens[$scopeNextNonEmpty]['content'];
                 }
 
                 $phpcsFile->addWarning(
